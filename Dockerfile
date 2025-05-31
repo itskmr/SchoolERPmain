@@ -33,9 +33,11 @@ RUN mkdir -p /var/www/html/application/cache \
              /var/www/html/uploads \
              /var/www/html/scripts
 
-# Copy and make database initialization script executable
+# Copy and make scripts executable
 COPY scripts/init-database.sh /var/www/html/scripts/
-RUN chmod +x /var/www/html/scripts/init-database.sh
+COPY scripts/startup.sh /usr/local/bin/
+RUN chmod +x /var/www/html/scripts/init-database.sh \
+    && chmod +x /usr/local/bin/startup.sh
 
 # Set permissions for writable directories
 RUN chown -R www-data:www-data /var/www/html/application/cache \
@@ -45,42 +47,10 @@ RUN chown -R www-data:www-data /var/www/html/application/cache \
                    /var/www/html/application/logs \
                    /var/www/html/uploads
 
-# Update database config for Railway if environment variables exist
+# Create backup of original database config
 RUN if [ -f /var/www/html/application/config/database.php ]; then \
         cp /var/www/html/application/config/database.php /var/www/html/application/config/database.php.backup; \
     fi
-
-# Create startup script that handles database setup and Apache startup
-RUN cat > /usr/local/bin/startup.sh << 'EOF'
-#!/bin/bash
-
-echo "🚀 Starting School Management System..."
-
-# Update database configuration if Railway MySQL variables are available
-if [ ! -z "$MYSQLHOST" ]; then
-    echo "🔧 Configuring database connection for Railway..."
-    sed -i "s/'hostname' => 'localhost'/'hostname' => '$MYSQLHOST'/g" /var/www/html/application/config/database.php
-    sed -i "s/'username' => 'root'/'username' => '$MYSQLUSER'/g" /var/www/html/application/config/database.php
-    sed -i "s/'password' => ''/'password' => '$MYSQLPASSWORD'/g" /var/www/html/application/config/database.php
-    sed -i "s/'database' => 'school'/'database' => '$MYSQLDATABASE'/g" /var/www/html/application/config/database.php
-    sed -i "s/'port' => ''/'port' => '$MYSQLPORT'/g" /var/www/html/application/config/database.php
-    
-    echo "✅ Database configuration updated"
-    
-    # Run database initialization in background
-    echo "🗄️ Starting database initialization..."
-    /var/www/html/scripts/init-database.sh &
-else
-    echo "⚠️  No Railway database variables found. Using local configuration."
-fi
-
-echo "🌐 Starting Apache web server..."
-# Start Apache in foreground
-exec apache2-foreground
-EOF
-
-# Make startup script executable
-RUN chmod +x /usr/local/bin/startup.sh
 
 # Expose port 80
 EXPOSE 80
