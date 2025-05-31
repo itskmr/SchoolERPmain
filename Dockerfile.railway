@@ -1,0 +1,54 @@
+FROM php:8.1-apache
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    libzip-dev \
+    zip \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PHP extensions
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) gd mysqli pdo pdo_mysql zip
+
+# Enable Apache mod_rewrite
+RUN a2enmod rewrite
+
+# Set working directory
+WORKDIR /var/www/html
+
+# Copy application code
+COPY . /var/www/html/
+
+# Create required directories if they don't exist
+RUN mkdir -p /var/www/html/application/cache \
+             /var/www/html/application/logs \
+             /var/www/html/uploads
+
+# Set permissions for writable directories
+RUN chown -R www-data:www-data /var/www/html/application/cache \
+                               /var/www/html/application/logs \
+                               /var/www/html/uploads \
+    && chmod -R 755 /var/www/html/application/cache \
+                   /var/www/html/application/logs \
+                   /var/www/html/uploads
+
+# Update database config for Railway
+RUN if [ -f /var/www/html/application/config/database.php ]; then \
+        sed -i "s/'hostname' => 'localhost'/'hostname' => getenv('MYSQLHOST') ?: 'localhost'/g" /var/www/html/application/config/database.php && \
+        sed -i "s/'username' => 'root'/'username' => getenv('MYSQLUSER') ?: 'root'/g" /var/www/html/application/config/database.php && \
+        sed -i "s/'password' => ''/'password' => getenv('MYSQLPASSWORD') ?: ''/g" /var/www/html/application/config/database.php && \
+        sed -i "s/'database' => 'school'/'database' => getenv('MYSQLDATABASE') ?: 'school'/g" /var/www/html/application/config/database.php && \
+        sed -i "s/'port' => ''/'port' => getenv('MYSQLPORT') ?: '3306'/g" /var/www/html/application/config/database.php; \
+    fi
+
+# Set environment to production
+RUN sed -i "s/define('ENVIRONMENT', isset(\\\$_SERVER\['CI_ENV'\]) ? \\\$_SERVER\['CI_ENV'\] : 'production');/define('ENVIRONMENT', 'production');/g" /var/www/html/index.php
+
+# Expose port
+EXPOSE 80
+
+CMD ["apache2-foreground"] 
